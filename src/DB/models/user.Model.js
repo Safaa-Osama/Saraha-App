@@ -23,7 +23,10 @@ const userSchema = new mongoose.Schema({
         unique: true,
         trim: true
     },
-    confirmedEmail: Boolean,
+    confirmedEmail: {
+        type:Boolean,
+        default:false
+    }, 
     password: {
         type: String,
         minLength: 6,
@@ -60,12 +63,12 @@ const userSchema = new mongoose.Schema({
         default: roleEnum.user
     },
     profilePicture: {
-        secure_url: { type: String, required: true },
-        public_id: { type: String, required: true }
+        secure_url: { type: String },
+        public_id: { type: String }
     },
     coverPictures: [{
-        secure_url: { type: String, required: true },
-        public_id: { type: String, required: true }
+        secure_url: String,
+        public_id: String
     }],
     profileVisits: {
         type: Number,

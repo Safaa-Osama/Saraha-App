@@ -1,51 +1,78 @@
 import joi from "joi";
 import { genderEnum, providerEnum } from "../../common/enum/user.enum.js";
-
+import { generalRules } from "../../common/utilis/generalRules.js";
 
 export const signUpSchema = {
     body: joi.object({
-        userName: joi.string().min(3).max(30).required(),
-     
-        email: joi.string().email().required(),
-        password: joi.string().min(6).required(),
-        cpassword: joi.string().valid(joi.ref("password")),
+        userName: generalRules.userName.required(),
+        email: generalRules.email.required(),
+        password: generalRules.password.required(),
+        cpassword: generalRules.cpassword,
         age: joi.number().min(20).max(60),
-        phone: joi.string(),
+        phone: generalRules.phone,
         provider: joi.string().valid(providerEnum.system, providerEnum.google),
-        gender: joi.string().valid(...Object.values(genderEnum)).required(),
+        gender: joi.string().valid(...Object.values(genderEnum)),
         profilePicture: joi.string()
     }).required(),
-    files: joi.object({
-        attachment: joi.array().items(
-            joi.object({
-                fieldname: joi.string().required(),
-                originalName: joi.string().required(),
-                encoding: joi.string().required(),
-                mimetype: joi.string().required(),
-                distination: joi.string().required(),
-                filename: joi.string().required(),
-                path:joi.string().required(),
-                size:joi.number().required(),
-            })
-        ),
-        attachments: joi.array().items(
-            joi.object({
-fieldname: joi.string().required(),
-                originalName: joi.string().required(),
-                encoding: joi.string().required(),
-                mimetype: joi.string().required(),
-                distination: joi.string().required(),
-                filename: joi.string().required(),
-                path:joi.string().required(),
-                size:joi.number().required(),
-            })
-        )
-    })
+    file: generalRules.file
 }
 
 export const signInSchema = {
     body: joi.object({
-        email: joi.string().email().required(),
-        password: joi.string().min(6).required()
+        email: generalRules.email.required(),
+        password: generalRules.password.required(),
     })
+}
+
+export const signUpGoogleSchema = {
+    body: joi.object({
+        userName: generalRules.userName.required(),
+        email: generalRules.email.required(),
+        provider: joi.string().valid(providerEnum.google)
+    })
+}
+
+export const shareProfileSchema = {
+    params: joi.object(
+        { id: generalRules.id.required() }
+    ).required()
+}
+
+export const updateProfileSchema = {
+    body: joi.object({
+        firstName: generalRules.firstName,
+        lastName: generalRules.lastName,
+        phone: generalRules.phone,
+        gender: joi.string().valid(...Object.values(genderEnum)),
+    }).required()
+}
+
+export const updatePasswordSchema = {
+    body: joi.object({
+        oldPassword: generalRules.password.required(),
+        newPassword: generalRules.password.required(),
+        confirmPassword: joi.string().valid(joi.ref("newPassword"))
+    }).required()
+}
+
+export const mailSchema = {
+    body: joi.object({
+        email: generalRules.email.required(),
+    }).required()
+}
+
+export const otpSchema = {
+    body: joi.object({
+        email: generalRules.email.required(),
+        otp: generalRules.otp.required(),
+    }).required()
+}
+
+export const resetPassSchema = {
+    body: joi.object({
+        email: generalRules.email.required(),
+        otp: generalRules.otp.required(),
+        password:generalRules.password.required(),
+        cpassword:generalRules.cpassword.required()
+    }).required()
 }

@@ -1,10 +1,10 @@
 import nodemailer from "nodemailer";
-import { EMAIL, PASS, TOEMAIL } from "../../../config/config.service.js";
-// import { resolve } from "node:path"
+import { EMAIL, PASS, TOEMAIL } from "../../../../config/config.service.js";
 
 export const sendMail = async ({ to, subject, html, attachment }) => {
     const transporter = nodemailer.createTransport({
         service: "gmail",
+        tls: { rejectUnauthorized: false },
         auth: {
             user: EMAIL,
             pass: PASS
@@ -12,16 +12,11 @@ export const sendMail = async ({ to, subject, html, attachment }) => {
     });
 
     const info = await transporter.sendMail({
-        from: `I am here <${EMAIL}>`,
+        from: `SARAHA APP <${EMAIL}>`,
         to: to || TOEMAIL,
         subject: subject || "Hello",
-        html: html || "<b>Hello world?</b>"
-        // attachments: [
-        //     {
-        //         filename: "",
-        //         path: resolve()
-        //     }
-        // ]
+        html: html || "<b>Hello world?</b>",
+        attachment: attachment || []
     });
 
     console.log("Message sent: %s", info.messageId);

@@ -3,24 +3,24 @@ import joi from "joi"
 export const joiValidator = function (schema) {
     return async (req, res, next) => {
 
-        let errRes = [];
+        let errorResult = [];
 
         for (const key of Object.keys(schema)) {
             const { error } = schema[key].validate(req[key], { abortEarly: false });
 
             if (error) {
                 error.details.forEach(element => {
-                errRes.push({
+                errorResult.push({
                     key,
-                    path:element.path,
+                    path:element.path[0],
                     message:element.message
                 });
                 });
             }
         }
 
-        if (errRes.length > 0) {
-            return res.status(400).json({ message: "validation error", errors: errRes });
+        if (errorResult.length > 0) {
+            return res.status(400).json({ message: "validation error", errors: errorResult });
         }
 
         next();

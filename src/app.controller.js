@@ -5,18 +5,42 @@ import { PORT } from "../config/config.service.js";
 import { messageRouter } from './Modules/message/message.controller.js';
 import cors from "cors";
 import { redisConnect } from './DB/redis/redis.connect.js';
+import helmet from "helmet";
+import { rateLimit } from 'express-rate-limit'
 
 const app = express();
-const bootstrap = () => {
+
+
+const bootstrap = async () => {
 
     if (!PORT) {
         throw new Error("PORT is not defined in .env");
     }
 
-    app.use(cors(), express.json());
+    const corsOption = {
+        origin: function (ORIGINS, callback) {
+            if ([...ORIGINS, undefined].includes(origin)) {
+                callback(null, true)
+            } else {
+                callback(new Error("Not Allowed by core"))
+            }
+        }
+    }
+    const limiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        limit: 10,
+        message: "too many request, come back after 15 min",
+        legacyHeaders: false,
+    })
+    app.use(
+        cors(corsOption),
+        helmet(),
+        limiter,
+        express.json()
+    );
 
     app.get('/', (req, res, next) => {
-        res.json({ message: 'Hello on Saraha App .....' });
+        res.json({ message: 'Welcome to Saraha App .....' });
     });
 
     testDBConnection();

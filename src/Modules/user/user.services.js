@@ -6,13 +6,18 @@ import { providerEnum } from "../../common/enum/user.enum.js";
 import { compare, hash } from "../../common/utilis/security/hash.security.js";
 import { generateToken } from "../../common/utilis/token.service.js";
 import { OAuth2Client } from 'google-auth-library';
-import { CLIENT_ID, PRIVATE_KEY, REFRESH_SECRET_KEY, SALT_ROUND } from "../../../config/config.service.js";
+import * as CS from "../../../config/config.service.js";
 import cloudinary from "../../common/utilis/cloudinary/cloudinary.js";
-import rondomuid from "crypto"
-import invokeTokenModel from "../../DB/models/invoke.Model.js";
-import { generateOtp, sendMail } from "../../common/utilis/sendMail.js";
+import { generateOtp, sendMail } from "../../common/utilis/emailServices/sendMail.js";
+import { eventEmitter } from "../../common/utilis/emailServices/email.event.js";
+import { emailTemplete } from "../../common/utilis/emailServices/email.templete.js";
+import * as redis from "../../DB/redis/redis.services.js";
+import { randomUUID } from "node:crypto";
+import { emailEnum } from "../../common/enum/email.enum.js";
+import { globalAgent } from "node:http";
 
-//profile picture
+
+//PROFILE PICTURE
 export const signUp1 = async (req, res, next) => {
     const { userName, email, password, cpassword, age, gender, phone } = req.body;
 
@@ -27,37 +32,128 @@ export const signUp1 = async (req, res, next) => {
     ) {
         throw new Error("Email already exist", { cause: 409 })
     }
-
-    if (!req.file) {
-        throw new Error("wrong attachments")
+    if (!req.file ) {
+        throw new Error("wrong attachments");
     }
 
     const { secure_url, public_id } = await cloudinary.uploader.upload(req.file.path, {
         use_filename: true,
         unique_filename: false
     })
+
     const user = await db_services.create({
         model: userModel,
         data: {
             userName, email, age, gender,
-            password: hash({ text: password, salt_round: SALT_ROUND}),
+            password: hash({ text: password, salt_round: Number(CS.SALT_ROUND) }),
             phone: encrypt(phone),
-            profilePicture: { secure_url, public_id }
-
+            profilePicture: { secure_url, public_id },
         }
-    });
+    })
 
     const otp = await generateOtp();
-    await sendMail({
-        to: email,
-        subject:"Welcome to Saraha-App",
-        html:`<h1>Hello ${userName}<h1>
-        <p>welcome to saraha app your otp is ${otp}<p>`
-    })
-    succesRresponse({ res, status: 201, message:"success signUp",data: user });
+    eventEmitter.emit(emailEnum.cofirmEmail, async () => {
+        await sendMail({
+            to: email,
+            subject: "Welcome to Saraha-App",
+            html: emailTemplete(otp)
+        })
+    }
+    )
+
+    await redis.setValue({
+        key: redis.otpKey({ email, subject: emailEnum.cofirmEmail }),
+        value: hash({ text: `${otp}` }),
+        ttl: 60 * 3
+    });
+    await redis.setValue({
+        key: redis.maxOtp(email),
+        value: 1,
+        ttl: 60
+    });
+
+    succesRresponse({ res, status: 201, message: "success signUp", data: { user, otp } });
 }
 
-//cover pictures
+export const sendEmailOtp = async ({ email, subject }) => {
+
+    const isBlocked = await redis.ttl(redis.blockOtp(email))
+    if (isBlocked && isBlocked > 0) {
+        throw new Error(`You are blocked, Try again after ${isBlocked} seconds`)
+    }
+    console.log(await redis.blockOtp(email))
+
+    const ttl = await redis.ttl(redis.otpKey({ email, subject }));
+    if (ttl > 0) {
+        throw new Error(`can not sent OTP after ${ttl} seconds`)
+    }
+
+    const maximumOtp = await redis.getValue(redis.maxOtp(email))
+    if (maximumOtp > 3) {
+        await redis.setValue({ key: redis.blockOtp(email), value: 1, ttl: 60 * 3 })
+        throw new Error("you have exceeded the maximum number of tries")
+    }
+
+    const otp = await generateOtp();
+    eventEmitter.emit(emailEnum.cofirmEmail, async () => {
+        await sendMail({
+            to: email,
+            subject: "Welcome to Saraha-App",
+            html: emailTemplete(otp)
+        })
+    }
+    )
+
+    await redis.setValue({
+        key: redis.otpKey({ email, subject }),
+        value: hash({ text: `${otp}` }),
+        ttl: 60 * 3
+    });
+    await redis.inc(redis.maxOtp(email))
+}
+
+export const confirmEmail = async (req, res, next) => {
+    const { email, otp } = req.body
+    const otpExist = await redis.getValue(redis.otpKey({ email, subject: emailEnum.cofirmEmail }))
+    if (!otpExist) {
+        throw new Error("Expired OTP")
+    }
+
+    if (!compare({ text: otp, cipherTxt: otpExist })) {
+        throw new Error("Invalid OTP")
+    }
+
+    const user = db_services.findAndUpdate({
+        model: userModel,
+        filter: { email, confirmedEmail: { $exists: false }, provider: providerEnum.system },
+        update: { confirmedEmail: true }
+    })
+    if (!user) {
+        throw new Error("User is not exist")
+    }
+    await redis.delKey(redis.otpKey({ email, subject: emailEnum.cofirmEmail }))
+
+    succesRresponse({ res, message: "Email confirmed", data: user })
+}
+
+export const resendOTP = async (req, res, next) => {
+
+    const { email } = req.body
+
+    const user = db_services.findOne({
+        model: userModel,
+        filter: { email, confirmedEmail: { $exists: false }, provider: providerEnum.system }
+    })
+
+    if (!user) {
+        throw new Error("User is not exist or Emial is not confirmed")
+    }
+
+    await sendEmailOtp({ email, subject: emailEnum.cofirmEmail })
+
+    succesRresponse({ res, message: "Otp send again" })
+}
+//COVER PICTURES
 export const signUp2 = async (req, res, next) => {
     const { userName, email, password, cpassword, age, gender, phone } = req.body;
 
@@ -68,18 +164,21 @@ export const signUp2 = async (req, res, next) => {
     if (await db_services.findOne({
         model: userModel,
         filter: { email }
-    })
-    ) {
+    })) {
         throw new Error("Email already exist", { cause: 409 })
     }
 
-    if (!req.files.length > 0) {
-        throw new Error("wrong attachments")
+    if (!req.files || req.files.length === 0) {
+        throw new Error("wrong attachments");
     }
 
     let paths = []
     for (const file of req.files) {
-        paths.push(file.path)
+        const { secure_url, public_id } = await cloudinary.uploader.upload(file.path, {
+            use_filename: true,
+            unique_filename: false
+        });
+        paths.push({ secure_url, public_id });
     }
 
     const user = await db_services.create({
@@ -88,44 +187,6 @@ export const signUp2 = async (req, res, next) => {
             userName, email, age, gender,
             password: hash({ text: password, salt_round: 10 }),
             phone: encrypt(phone),
-            coverPictures: paths
-
-        }
-    });
-    succesRresponse({ res, status: 201, data: user });
-}
-
-export const signUp3 = async (req, res, next) => {
-    const { userName, email, password, cpassword, age, gender, phone } = req.body;
-
-    if (password !== cpassword) {
-        throw new Error("invalid password", { cause: 400 })
-    }
-
-    if (await db_services.findOne({
-        model: userModel,
-        filter: { email }
-    })
-    ) {
-        throw new Error("Email already exist", { cause: 409 })
-    }
-
-    if (!req.files) {
-        throw new Error("wrong attachments")
-    }
-
-    let paths = []
-    for (const file of req.files.attachments) {
-        paths.push(file.path)
-    }
-
-    const user = await db_services.create({
-        model: userModel,
-        data: {
-            userName, email, age, gender,
-            password: hash({ text: password, salt_round: 10 }),
-            phone: encrypt(phone),
-            profilePicture: req.files.attachment[0].path,
             coverPictures: paths
 
         }
@@ -184,33 +245,30 @@ export const signIn = async (req, res, next) => {
 
     let user = await db_services.findOne({
         model: userModel,
-        filter: { email, provider: providerEnum.system }
+        filter: {
+            email,
+            provider: providerEnum.system,
+            confirmedEmail: { $exists: true }
+        }
     })
     if (!user) {
-        throw new Error(" user not exist ", { cause: 400 })
+        throw new Error(" user not exist or invalid provider", { cause: 400 })
     }
 
     if (!(compare({ text: password, cipherTxt: user.password }))) {
         throw new Error("invalid password", { cause: 400 })
     }
 
-    user = await db_services.updateOne({
-        model: userModel,
-        filter: { _id: user._id },
-        options:
-            { $inc: { profileViews: 1 } },
-
-    })
-
-    const uuid = rondomuid();
+    const uuid = randomUUID()
     let accessToken = generateToken({
         payload: {
             id: user._id,
             email: user.email,
         },
-        secretKey: PRIVATE_KEY,
+        secretKey: CS.PRIVATE_KEY,
         option: {
-            expiresIn: '1h', jwtid:uuid
+            expiresIn: 60 * 10,
+            jwtid: uuid
         }
     })
 
@@ -219,13 +277,33 @@ export const signIn = async (req, res, next) => {
             id: user._id,
             email: user.email,
         },
-        secretKey: REFRESH_SECRET_KEY,
-        option: { expiresIn: '1y' , jwtid:uuid}
+        secretKey: CS.REFRESH_SECRET_KEY,
+        option: { expiresIn: '1y', jwtid: uuid }
     })
-    succesRresponse({ res, data: { userToken: accessToken, userdata: user, refreshToken } });
+    succesRresponse({ res, data: { accessToken, refreshToken } });
 
 }
 
+export const logOut = async (req, res, next) => {
+
+    const { flag } = req.query;
+
+    if (flag == "all") {
+        req.user.changeCredential = new Date();
+        req.user.save();
+
+        await redis.delKey(await redis.keys(redis.getKey(req.user._id)))
+
+    } else {
+        await redis.setValue({
+            key: redis.rewvokedKey({ userId: req.user._id, jti: req.decoded.jti }),
+            value: `${req.decoded.jti}`,
+            ttl: req.decoded.exp - Math.floor(Date.now() / 1000)
+        })
+    }
+
+    succesRresponse({ res })
+}
 
 
 export const getAllUsers = async (req, res, next) => {
@@ -234,80 +312,157 @@ export const getAllUsers = async (req, res, next) => {
 }
 
 export const getProfile = async (req, res, next) => {
+    const key = `profile::${req.user._id}`
+    const userExist = await redis.getValue(key)
+
+    if (userExist) {
+        succesRresponse({ res, data: userExist })
+    }
+    await redis.setValue({ key, value: req.user, ttl: 60 * 2 })
 
     succesRresponse({ res, data: { ...req.user._doc, phone: decrypt(req.user.phone) } })
 }
 
-// export const refreshToken = async (req, res, next) => {
-//     const { authorization } = req.headers;
-//     if (!authorization) {
-//         throw new Error("token is required")
-//     }
-//     const decoded = verifyToken({
-//         token: authorization.split(" ")[1],
-//         secretKey: REFRESH_SECRET_KEY
-//     })
+export const shareProfile = async (req, res, next) => {
+    const { id } = req.params;
+    const user = await db_services.findById({
+        model: userModel,
+        id,
+    })
 
-//     if (!decoded || !decoded.id) {
-//         throw new Error("invalid token !")
-//     }
-
-//     const user = await db_services.updateOne({
-//         model: userModel,
-//         filter: { _id: decoded.id }
-//     })
-
-//     if (!user) {
-//         throw new Error("user not Exist !", {cause:400})
-
-//     }
-
-//     const accessToken = generateToken({
-//         payload: {
-//             id: user._id,
-//             email: user.email,
-//         },
-//         secretKey: PRIVATE_KEY,
-//         option: { expiresIn: 60*5 }
-//     })
-//        const refreshToken = generateRefreshToken({
-//         payload: {
-//             id: user._id,
-//             email: user.email,
-//         },
-//         secretKey: REFRESH_SECRET_KEY,
-//         option: { expiresIn: 60*5 }
-//     })
-//     generateRefreshToken
-
-//     succesRresponse({ res, data: { userToken: accessToken, refreshToken: refreshToken } });
-
-// }
-
-export const logOut = async (req, res, next) => {
-
-    const { flag } = req.query;
-
-    //ALL DEVICES
-    if (flag == "all") {
-        req.user.changeCredential = new Date();
-        req.user.save();
-
-        await db_services.deleteMany({
-            model:userModel,
-            filter: {userId:req.user._id}
-        })
-
-    } else { //ONE DEVICE
-        await db_services.create({
-            model:invokeTokenModel,
-            data:{
-                tokenId:req.decoded.jwt,
-                userId:req.user._id,
-                expireAt: new Date(req.decoded.exp * 1000)
-            }
-        })
+    if (!user) {
+        throw new Error("User not found")
     }
 
+    user.phone = decrypt(user.phone)
+    succesRresponse({ res, data: user })
+}
+
+
+export const refreshToken = async (req, res, next) => {
+    const { authorization } = req.headers;
+    if (!authorization) {
+        throw new Error("token is required")
+    }
+    const decoded = verifyToken({
+        token: authorization.split(" ")[1],
+        secretKey: REFRESH_SECRET_KEY
+    })
+
+    if (!decoded || !decoded.id) {
+        throw new Error("invalid token !")
+    }
+
+    const user = await db_services.findOne({
+        model: userModel,
+        filter: { _id: decoded.id }
+    })
+
+    if (!user) {
+        throw new Error("user not Exist !", { cause: 400 })
+
+    }
+
+    let accessToken = generateToken({
+        payload: {
+            id: user._id,
+            email: user.email,
+        },
+        secretKey: PRIVATE_KEY,
+        option: {
+            expiresIn: 60 * 5
+        }
+    })
+    succesRresponse({ res, data: accessToken });
+
+}
+
+// UPDATES
+export const updateProfile = async (req, res, next) => {
+    let { firstName, lastName, phone, gender } = req.body
+    if (phone) {
+        phone = encrypt(phone);
+    }
+
+    const user = await db_services.updateOne({
+        model: userModel,
+        filter: { _id: req.user.id },
+        update: { firstName, lastName, gender, phone }
+    })
+
+    if (!user) {
+        throw new Error("user is not exist")
+    }
+
+
+    succesRresponse({ res, data: user })
+}
+export const updatePassword = async (req, res, next) => {
+    let { newPassword, oldPassword, confirmPassword } = req.body
+
+    if (!compare({ text: oldPassword, cipherTxt: req.user.password })) {
+        throw new Error("invalid old password")
+    }
+
+    const hashed = hash({ text: newPassword, salt_round: CS.SALT_ROUND })
+    newPassword = hashed
+    req.user.changeCredential = new Date()
+    await req.user.save()
+
     succesRresponse({ res })
+}
+
+export const forgetPassword = async (req, res, next) => {
+    const { email } = req.body;
+
+    let user = await db_services.findOne({
+        model: userModel,
+        filter: {
+            email,
+            provider: providerEnum.system,
+            confirmedEmail: { $exists: true }
+        }
+    })
+    if (!user) {
+        throw new Error(" user not exist or invalid provider", { cause: 400 })
+    }
+
+    await sendEmailOtp({ email, subject: emailEnum.forgetPass })
+
+
+
+    succesRresponse({ res, data: user });
+}
+
+
+export const resetPassword = async (req, res, next) => {
+    const { email, otp, password } = req.body;
+
+    const otpValue = await redis.getValue(redis.otpKey({ email, subject: emailEnum.forgetPass }))
+    if (!otpValue) {
+        throw new Error("OTP expired")
+    }
+    if (!compare({ text: otp, cipherTxt: otpValue })) {
+
+    }
+
+    let user = await db_services.findAndUpdate({
+        model: userModel,
+        filter: {
+            email,
+            provider: providerEnum.system,
+            confirmedEmail: { $exists: true }
+        },
+        update: {
+            password: await hash({ text: password }),
+            changeCredential: new Date()
+        }
+    })
+    if (!user) {
+        throw new Error(" user not exist or invalid provider", { cause: 400 })
+    }
+
+    await redis.delKey(redis.otpKey({email,subject:emailEnum.forgetPass}))
+
+    succesRresponse({ res, data: user });
 }

@@ -5,32 +5,74 @@ import { joiValidator } from "../../common/middleware/joi.validator.js";
 import * as UV from "./user.schema.js";
 import { multer_cloud, multer_local } from "../../common/middleware/multer.js";
 import { multerEnum } from "../../common/enum/multer.enum.js";
+import { messageRouter } from "../message/message.controller.js";
 
 
-export const userRouter = Router();
+export const userRouter = Router({
+    caseSensitive: true,
+    strict: true,
+});
 
+userRouter.use("/:userId/messages", messageRouter)
 userRouter.get("/", US.getAllUsers);
 
-//single + cloudinary
-userRouter.post('/sign-up1', multer_cloud(multerEnum.image).single("attachment"), joiValidator(UV.signUpSchema),US.signUp1);
 
-//array
-userRouter.post('/sign-up2', multer_local({ customPath: "useers", customType: multerEnum.image }).array("attachments", 3), US.signUp2);
+userRouter.post("/sign-up",
+    multer_cloud(multerEnum.image).single("attachment"),
+    joiValidator(UV.signUpSchema),
+    US.signUp1);
 
-//fields
-userRouter.post('/sign-up3', multer_local({ customPath: "useers", customType: multerEnum.image })
-    .fields([
-        { name: "attachments", maxCount: 3 },
-        { name: "attachment", maxCount: 1 }
-    ]), US.signUp3);
+userRouter.post('/sign-up2',
+    multer_local({ customPath: "users", customType: multerEnum.image }).array("attachments", 3),
+    joiValidator(UV.signUpSchema),
+    US.signUp2);
 
-userRouter.post('/signup/gmail', US.signUpWithGoogle);
 
-userRouter.post('/sign-in', joiValidator(UV.signInSchema), US.signIn);
+userRouter.post('/signup/gmail',
+    joiValidator(UV.signUpGoogleSchema),
+    US.signUpWithGoogle);
 
+
+userRouter.post('/sign-in',
+    joiValidator(UV.signInSchema),
+    US.signIn);
+
+userRouter.get("/confirm",
+    joiValidator(UV.otpSchema),
+    US.confirmEmail)
+
+userRouter.get("/resend",
+    joiValidator(UV.mailSchema),
+    US.resendOTP)
+
+userRouter.get("/logOut", authontication, US.logOut);
 
 userRouter.get("/profile", authontication, US.getProfile);
-userRouter.get("/logOut", authontication, US.logOut);
+userRouter.patch("/profile",
+    joiValidator(UV.updateProfileSchema)
+    , authontication,
+    US.updateProfile);
+
+userRouter.patch("/profile/password",
+    joiValidator(UV.updatePasswordSchema)
+    , authontication,
+    US.updatePassword);
+
+userRouter.patch("/profile/forget",
+    joiValidator(UV.mailSchema)
+    , US.forgetPassword);
+
+userRouter.patch("/profile/reset",
+    joiValidator(UV.resetPassSchema)
+    , US.resetPassword);
+
+userRouter.get("/profile/:id",
+    joiValidator(UV.shareProfileSchema),
+    US.shareProfile);
+
+
+userRouter.get("/refreshToken", US.refreshToken);
+
 
 
 

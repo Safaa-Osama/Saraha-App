@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 
 
-const ENCRYPTION_KEY = Buffer.from("21345pwng545648ma65456aslo554564")
+export const ENCRYPTION_KEY = Buffer.from("21345pwng545648ma65456aslo554564")
 const IV_LENGTH = 32;
 
 export function encrypt(text) {
