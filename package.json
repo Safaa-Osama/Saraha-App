@@ -14,15 +14,18 @@
     "mongoose": "^9.1.6",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.2",
+    "pm2": "^6.0.14",
     "redis": "^5.11.0"
   },
   "name": "lecture",
   "version": "1.0.0",
   "description": "",
   "main": "src/index.js",
-  "engines": {"node": "24.11.1"},
+  "engines": {
+    "node": "24.11.1"
+  },
   "scripts": {
-    "dev": "cross-env NODE_ENV=development nodemon src/index.js",
+    "dev": "cross-env NODE_ENV=development pm2 start src/index.js -i 0",
     "start": "cross-env NODE_ENV=production node src/index.js"
   },
   "keywords": [],
