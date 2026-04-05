@@ -28,7 +28,7 @@ const bootstrap = async () => {
     }
     const limiter = rateLimit({
         windowMs: 15 * 60 * 1000,
-        limit: 10,
+        limit: 100,
         message: "too many request, come back after 15 min",
         legacyHeaders: false,
     })

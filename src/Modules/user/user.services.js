@@ -32,7 +32,7 @@ export const signUp1 = async (req, res, next) => {
     ) {
         throw new Error("Email already exist", { cause: 409 })
     }
-    if (!req.file ) {
+    if (!req.file) {
         throw new Error("wrong attachments");
     }
 
@@ -201,7 +201,7 @@ export const signUpWithGoogle = async (req, res, next) => {
     const client = new OAuth2Client();
     const ticket = await client.verifyIdToken({
         idToken,
-        audience: CLIENT_ID
+        audience: CS.CLIENT_ID
     });
     const payload = ticket.getPayload();
     const { email, email_verified, name, picture } = payload;
@@ -233,13 +233,12 @@ export const signUpWithGoogle = async (req, res, next) => {
         payload: {
             id: user._id, email: user.email
         },
-        secretKey: PRIVATE_KEY,
+        secretKey: CS.PRIVATE_KEY,
         option: { expiresIn: '1h' }
     })
 
     succesRresponse({ res, data: { accessToken, user } })
 }
-
 export const signIn = async (req, res, next) => {
     const { email, password } = req.body;
 
@@ -307,7 +306,7 @@ export const logOut = async (req, res, next) => {
 
 
 export const getAllUsers = async (req, res, next) => {
-    const users = await db_services.findAll(userModel, "firstName lastName gender provider age")
+    const users = await db_services.findAll({ model: userModel, fielsd: "firstName lastName gender provider age" })
     succesRresponse({ res, data: users });
 }
 
@@ -384,7 +383,7 @@ export const updateProfile = async (req, res, next) => {
         phone = encrypt(phone);
     }
 
-    const user = await db_services.updateOne({
+    const user = await db_services.findAndUpdate({
         model: userModel,
         filter: { _id: req.user.id },
         update: { firstName, lastName, gender, phone }
@@ -404,7 +403,7 @@ export const updatePassword = async (req, res, next) => {
         throw new Error("invalid old password")
     }
 
-    const hashed = hash({ text: newPassword, salt_round: CS.SALT_ROUND })
+    const hashed = hash({ text: newPassword, salt_round: Number(CS.SALT_ROUND )})
     newPassword = hashed
     req.user.changeCredential = new Date()
     await req.user.save()
@@ -462,7 +461,7 @@ export const resetPassword = async (req, res, next) => {
         throw new Error(" user not exist or invalid provider", { cause: 400 })
     }
 
-    await redis.delKey(redis.otpKey({email,subject:emailEnum.forgetPass}))
+    await redis.delKey(redis.otpKey({ email, subject: emailEnum.forgetPass }))
 
     succesRresponse({ res, data: user });
 }

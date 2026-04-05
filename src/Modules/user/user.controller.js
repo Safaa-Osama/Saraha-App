@@ -29,7 +29,7 @@ userRouter.post('/sign-up2',
 
 
 userRouter.post('/signup/gmail',
-    joiValidator(UV.signUpGoogleSchema),
+    // joiValidator(UV.signUpGoogleSchema),
     US.signUpWithGoogle);
 
 

@@ -26,9 +26,6 @@ let PASS = process.env.PASS
 let TOEMAIL = process.env.TOEMAIL
 let ORIGINS = process.env.ORIGINS.split(",") || []
 
-
-
-
 export {
     REDIS_URI,
     REFRESH_SECRET_KEY,

@@ -7,7 +7,7 @@ import { sendSchema } from "./message.schema.js";
 
 export const messageRouter = Router({ mergeParams: true });
 
-messageRouter.get("/", MS.getMessges)
+messageRouter.get("/", MS.getAllMessges)
 
 messageRouter.post("/send",
     multer_local({ customPath: "messages", customType: multerEnum.image }).array("attachments", 3),

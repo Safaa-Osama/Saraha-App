@@ -4,7 +4,7 @@ import messageModel from "../../DB/models/message.model.js";
 import userModel from "../../DB/models/user.Model.js"
 
 export const getAllMessges = async (req, res, next) => {
-    const messages = await db_service.findAll({model:messageModel})
+    const messages = await db_service.findAll({ model: messageModel })
     succesRresponse({ res, data: messages })
 }
 
@@ -27,13 +27,12 @@ export const sendMessage = async (req, res, next) => {
         }
     }
 
-    const message = db_service.create({
+    const message = await db_service.create({
         model: messageModel,
         data: {
             content, userId: user.id, attachments: paths
         }
     })
-
     succesRresponse({ res, status: 201, data: message })
 }
 
