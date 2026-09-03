@@ -81,7 +81,6 @@ export const sendEmailOtp = async ({ email, subject }) => {
     if (isBlocked && isBlocked > 0) {
         throw new Error(`You are blocked, Try again after ${isBlocked} seconds`)
     }
-    console.log(await redis.blockOtp(email))
 
     const ttl = await redis.ttl(redis.otpKey({ email, subject }));
     if (ttl > 0) {
@@ -239,6 +238,7 @@ export const signUpWithGoogle = async (req, res, next) => {
 
     succesRresponse({ res, data: { accessToken, user } })
 }
+
 export const signIn = async (req, res, next) => {
     const { email, password } = req.body;
 
@@ -306,7 +306,7 @@ export const logOut = async (req, res, next) => {
 
 
 export const getAllUsers = async (req, res, next) => {
-    const users = await db_services.findAll({ model: userModel, fielsd: "firstName lastName gender provider age" })
+    const users = await db_services.findAll({ model: userModel, feilds: "firstName lastName gender provider age" })
     succesRresponse({ res, data: users });
 }
 
